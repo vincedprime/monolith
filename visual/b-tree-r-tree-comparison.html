@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B-Tree vs Spatial Index</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #718096;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .demo-section {
+            background: #f7fafc;
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+        }
+        .demo-section h2 {
+            margin-top: 0;
+            color: #2d3748;
+            font-size: 1.3em;
+            margin-bottom: 20px;
+        }
+        canvas {
+            border: 2px solid #cbd5e0;
+            border-radius: 8px;
+            background: white;
+            display: block;
+            margin: 20px auto;
+        }
+        .explanation {
+            background: #edf2f7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #667eea;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-box {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            display: block;
+        }
+        .stat-label {
+            color: #718096;
+            font-size: 0.9em;
+            display: block;
+            margin-top: 5px;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+        .highlight {
+            color: #48bb78;
+            font-weight: bold;
+        }
+        .bad {
+            color: #f56565;
+            font-weight: bold;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .problem-box {
+            background: #fff5f5;
+            border: 2px solid #fc8181;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .problem-box h3 {
+            color: #c53030;
+            margin-top: 0;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗺️ Why Separate B-Tree Indexes Fail for Spatial Queries</h1>
+        <p class="subtitle">Understanding the fundamental limitation of 1D indexes for 2D data</p>
+
+        <div class="demo-grid">
+            <div class="demo-section">
+                <h2>❌ Two Separate B-Tree Indexes</h2>
+                <canvas id="btreeCanvas" width="500" height="400"></canvas>
+                <div class="explanation">
+                    <strong>How it works:</strong>
+                    <ol>
+                        <li>Latitude index finds all points in horizontal band</li>
+                        <li>Longitude index finds all points in vertical band</li>
+                        <li>Database intersects the two result sets</li>
+                    </ol>
+                </div>
+                <div class="stats">
+                    <div class="stat-box">
+                        <span class="stat-value" id="btreeLat">0</span>
+                        <span class="stat-label">Rows from Lat Index</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value" id="btreeLon">0</span>
+                        <span class="stat-label">Rows from Lon Index</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value" id="btreeIntersect">0</span>
+                        <span class="stat-label">After Intersection</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value bad" id="btreeWaste">0%</span>
+                        <span class="stat-label">Wasted Work</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-section">
+                <h2>✅ Spatial Index (R-Tree)</h2>
+                <canvas id="rtreeCanvas" width="500" height="400"></canvas>
+                <div class="explanation">
+                    <strong>How it works:</strong>
+                    <ol>
+                        <li>Checks bounding boxes hierarchically</li>
+                        <li>Prunes entire branches that don't overlap</li>
+                        <li>Only examines points in relevant regions</li>
+                    </ol>
+                </div>
+                <div class="stats">
+                    <div class="stat-box">
+                        <span class="stat-value highlight" id="rtreeChecked">0</span>
+                        <span class="stat-label">Nodes Checked</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value highlight" id="rtreePruned">0</span>
+                        <span class="stat-label">Nodes Pruned</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value highlight" id="rtreeResult">0</span>
+                        <span class="stat-label">Points Found</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value highlight" id="rtreeEfficiency">0%</span>
+                        <span class="stat-label">Efficiency</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="runDemo()">🔄 Run Demo</button>
+            <button onclick="addMorePoints()">➕ Add More Points</button>
+            <button onclick="reset()">🔁 Reset</button>
+        </div>
+
+        <div class="problem-box full-width">
+            <h3>🚨 The Fundamental Problem</h3>
+            <p><strong>B-Trees are 1-dimensional.</strong> They can efficiently find ranges in ONE dimension, but spatial queries need TWO dimensions simultaneously.</p>
+            
+            <div class="code-block">
+<span class="bad">-- Latitude B-Tree sorts like this:</span>
+Points: A(40.71, -74.01), B(40.72, -73.99), C(40.73, -74.00)
+Sorted: A → B → C   (by latitude only)
+
+<span class="bad">-- But C is closer to A than B is!</span>
+Distance A→B: ~2 km
+Distance A→C: ~1.5 km
+
+<span class="bad">-- The index doesn't understand spatial proximity!</span>
+            </div>
+
+            <p><strong>With separate indexes:</strong></p>
+            <ul>
+                <li>Latitude index: "Give me all points between 40.70-40.75" → <span class="bad">10,000 points</span></li>
+                <li>Longitude index: "Give me all points between -74.05 to -73.95" → <span class="bad">12,000 points</span></li>
+                <li>Intersection: <span class="highlight">100 points actually in the box</span></li>
+                <li><strong>Waste: 99.5% of fetched data is discarded!</strong></li>
+            </ul>
+        </div>
+
+        <div class="demo-section full-width">
+            <h2>📊 Performance Comparison</h2>
+            <div class="code-block">
+<span class="highlight">-- Query: Find businesses within 5km of a point</span>
+Dataset: 1,000,000 points
+
+<span class="bad">❌ Two B-Tree Indexes:</span>
+  1. Scan latitude index    → 15,000 rows (5ms)
+  2. Scan longitude index   → 18,000 rows (6ms)
+  3. Build hash sets        → (12ms)
+  4. Intersect              → (8ms)
+  5. Fetch actual rows      → 150 rows (15ms)
+  <strong>Total: ~46ms, examined 33,000+ rows</strong>
+
+<span class="highlight">✅ R-Tree Spatial Index:</span>
+  1. Check root node        → 1 node (0.1ms)
+  2. Check level 2 nodes    → 3 nodes (0.3ms)
+  3. Check level 3 nodes    → 8 nodes (0.8ms)
+  4. Fetch points           → 150 rows (3ms)
+  <strong>Total: ~4ms, examined 12 nodes + 150 points</strong>
+
+<strong>🚀 Result: 11.5x faster with spatial index!</strong>
+            </div>
+        </div>
+
+        <div class="demo-section full-width">
+            <h2>🧠 The Math Behind the Problem</h2>
+            <div class="code-block">
+<span class="highlight">Why intersection is expensive:</span>
+
+For a square query box covering 0.1% of each dimension:
+- Latitude range:  sqrt(0.001) = 0.0316 = 3.16% of data
+- Longitude range: sqrt(0.001) = 0.0316 = 3.16% of data
+
+<span class="bad">But you want: 0.001 * 1,000,000 = 1,000 points</span>
+
+With separate indexes:
+- Lat index returns: 0.0316 * 1,000,000 = 31,600 points
+- Lon index returns: 0.0316 * 1,000,000 = 31,600 points
+- <strong>Combined: ~63,000 points fetched to find 1,000 points!</strong>
+- <strong>98.4% waste!</strong>
+
+<span class="highlight">With R-Tree:</span>
+- Hierarchical pruning eliminates ~99% of space
+- Only examines ~1,200 points to find 1,000
+- <strong>~16% waste (mostly boundary checking)</strong>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let points = [];
+        const POINT_COUNT = 200;
+        const QUERY_X = 250;
+        const QUERY_Y = 200;
+        const QUERY_RADIUS = 60;
+
+        function generatePoints() {
+            points = [];
+            for (let i = 0; i < POINT_COUNT; i++) {
+                points.push({
+                    x: Math.random() * 480 + 10,
+                    y: Math.random() * 380 + 10
+                });
+            }
+        }
+
+        function drawBTreeDemo() {
+            const canvas = document.getElementById('btreeCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw all points
+            points.forEach(p => {
+                ctx.fillStyle = '#cbd5e0';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw latitude band (horizontal)
+            ctx.fillStyle = 'rgba(252, 129, 129, 0.15)';
+            ctx.fillRect(0, QUERY_Y - QUERY_RADIUS, 500, QUERY_RADIUS * 2);
+            ctx.strokeStyle = '#fc8181';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(0, QUERY_Y - QUERY_RADIUS, 500, QUERY_RADIUS * 2);
+
+            // Draw longitude band (vertical)
+            ctx.fillStyle = 'rgba(246, 173, 85, 0.15)';
+            ctx.fillRect(QUERY_X - QUERY_RADIUS, 0, QUERY_RADIUS * 2, 400);
+            ctx.strokeStyle = '#f6ad55';
+            ctx.strokeRect(QUERY_X - QUERY_RADIUS, 0, QUERY_RADIUS * 2, 400);
+            ctx.setLineDash([]);
+
+            // Count points in each region
+            let inLatBand = 0;
+            let inLonBand = 0;
+            let inBoth = 0;
+
+            points.forEach(p => {
+                const inLat = Math.abs(p.y - QUERY_Y) <= QUERY_RADIUS;
+                const inLon = Math.abs(p.x - QUERY_X) <= QUERY_RADIUS;
+                
+                if (inLat) inLatBand++;
+                if (inLon) inLonBand++;
+                if (inLat && inLon) {
+                    inBoth++;
+                    ctx.fillStyle = '#48bb78';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // Draw query point
+            ctx.fillStyle = '#667eea';
+            ctx.beginPath();
+            ctx.arc(QUERY_X, QUERY_Y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Update stats
+            const totalFetched = inLatBand + inLonBand;
+            const waste = ((totalFetched - inBoth) / totalFetched * 100).toFixed(1);
+            
+            document.getElementById('btreeLat').textContent = inLatBand;
+            document.getElementById('btreeLon').textContent = inLonBand;
+            document.getElementById('btreeIntersect').textContent = inBoth;
+            document.getElementById('btreeWaste').textContent = waste + '%';
+        }
+
+        function drawRTreeDemo() {
+            const canvas = document.getElementById('rtreeCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Create simple R-Tree structure (4 quadrants)
+            const regions = [
+                {x: 0, y: 0, w: 250, h: 200, color: 'rgba(102, 126, 234, 0.1)'},
+                {x: 250, y: 0, w: 250, h: 200, color: 'rgba(72, 187, 120, 0.1)'},
+                {x: 0, y: 200, w: 250, h: 200, color: 'rgba(237, 137, 54, 0.1)'},
+                {x: 250, y: 200, w: 250, h: 200, color: 'rgba(159, 122, 234, 0.1)'}
+            ];
+
+            let checkedRegions = 0;
+            let prunedRegions = 0;
+            let foundPoints = 0;
+
+            // Draw and check regions
+            regions.forEach(region => {
+                const overlaps = !(
+                    QUERY_X + QUERY_RADIUS < region.x ||
+                    QUERY_X - QUERY_RADIUS > region.x + region.w ||
+                    QUERY_Y + QUERY_RADIUS < region.y ||
+                    QUERY_Y - QUERY_RADIUS > region.y + region.h
+                );
+
+                if (overlaps) {
+                    checkedRegions++;
+                    ctx.fillStyle = 'rgba(72, 187, 120, 0.2)';
+                    ctx.fillRect(region.x, region.y, region.w, region.h);
+                    ctx.strokeStyle = '#48bb78';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(region.x, region.y, region.w, region.h);
+                } else {
+                    prunedRegions++;
+                    ctx.fillStyle = region.color;
+                    ctx.fillRect(region.x, region.y, region.w, region.h);
+                    ctx.strokeStyle = '#cbd5e0';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(region.x, region.y, region.w, region.h);
+                }
+            });
+
+            // Draw points
+            points.forEach(p => {
+                const dist = Math.sqrt(Math.pow(p.x - QUERY_X, 2) + Math.pow(p.y - QUERY_Y, 2));
+                
+                if (dist <= QUERY_RADIUS) {
+                    foundPoints++;
+                    ctx.fillStyle = '#48bb78';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = '#cbd5e0';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // Draw query circle
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(QUERY_X, QUERY_Y, QUERY_RADIUS, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw query point
+            ctx.fillStyle = '#667eea';
+            ctx.beginPath();
+            ctx.arc(QUERY_X, QUERY_Y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Update stats
+            const efficiency = (foundPoints / (checkedRegions * (POINT_COUNT / 4)) * 100).toFixed(1);
+            
+            document.getElementById('rtreeChecked').textContent = checkedRegions;
+            document.getElementById('rtreePruned').textContent = prunedRegions;
+            document.getElementById('rtreeResult').textContent = foundPoints;
+            document.getElementById('rtreeEfficiency').textContent = efficiency + '%';
+        }
+
+        function runDemo() {
+            generatePoints();
+            drawBTreeDemo();
+            drawRTreeDemo();
+        }
+
+        function addMorePoints() {
+            for (let i = 0; i < 50; i++) {
+                points.push({
+                    x: Math.random() * 480 + 10,
+                    y: Math.random() * 380 + 10
+                });
+            }
+            drawBTreeDemo();
+            drawRTreeDemo();
+        }
+
+        function reset() {
+            runDemo();
+        }
+
+        // Initialize
+        runDemo();
+    </script>
+</body>
+</html>
