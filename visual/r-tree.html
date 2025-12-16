@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R-Tree Deep Dive</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 25px 70px rgba(0,0,0,0.4);
+        }
+        h1 {
+            text-align: center;
+            color: #1e293b;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+        .demo-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .visual-panel {
+            background: #f8fafc;
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+        }
+        .visual-panel h2 {
+            margin-top: 0;
+            color: #1e293b;
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        canvas {
+            border: 3px solid #cbd5e0;
+            border-radius: 10px;
+            background: white;
+            display: block;
+            margin: 0 auto;
+            cursor: crosshair;
+        }
+        .tree-structure {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            overflow-x: auto;
+            margin-top: 15px;
+            border: 2px solid #e2e8f0;
+        }
+        .tree-node {
+            margin: 5px 0;
+            padding: 5px 10px;
+            border-left: 3px solid #3b82f6;
+            background: #eff6ff;
+        }
+        .tree-level-0 { margin-left: 0; border-color: #ef4444; background: #fef2f2; }
+        .tree-level-1 { margin-left: 20px; border-color: #f59e0b; background: #fffbeb; }
+        .tree-level-2 { margin-left: 40px; border-color: #10b981; background: #f0fdf4; }
+        .tree-level-3 { margin-left: 60px; border-color: #3b82f6; background: #eff6ff; }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 25px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #3b82f6;
+        }
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #1e40af;
+            display: block;
+        }
+        .stat-label {
+            color: #475569;
+            font-size: 0.9em;
+            margin-top: 5px;
+            display: block;
+        }
+        .info-section {
+            background: #f1f5f9;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border-left: 5px solid #3b82f6;
+        }
+        .info-section h3 {
+            margin-top: 0;
+            color: #1e293b;
+        }
+        .algorithm-step {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #10b981;
+        }
+        .algorithm-step.active {
+            background: #d1fae5;
+            border-color: #059669;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+        .legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-box {
+            width: 30px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        code {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌲 R-Tree Deep Dive: How It Actually Works</h1>
+        <p class="subtitle">Interactive visualization of R-Tree structure and search algorithm</p>
+
+        <div class="demo-container">
+            <div class="visual-panel">
+                <h2>🗺️ Spatial View</h2>
+                <canvas id="spatialCanvas" width="600" height="500"></canvas>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: rgba(239, 68, 68, 0.2); border-color: #ef4444;"></div>
+                        <span>Root MBR</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: rgba(245, 158, 11, 0.2); border-color: #f59e0b;"></div>
+                        <span>Level 1 MBR</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: rgba(16, 185, 129, 0.2); border-color: #10b981;"></div>
+                        <span>Level 2 MBR</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: #3b82f6; border-color: #3b82f6;"></div>
+                        <span>Data Points</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="visual-panel">
+                <h2>🌳 Tree Structure</h2>
+                <div class="tree-structure" id="treeStructure"></div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalPoints">0</span>
+                        <span class="stat-label">Total Points</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="treeHeight">0</span>
+                        <span class="stat-label">Tree Height</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalNodes">0</span>
+                        <span class="stat-label">Total Nodes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="generateTree()">🔄 Generate New Tree</button>
+            <button onclick="addPoints()">➕ Add More Points</button>
+            <button onclick="startSearch()">🔍 Simulate Search</button>
+            <button onclick="reset()">🔁 Reset</button>
+        </div>
+
+        <div class="info-section full-width">
+            <h3>🔍 Search Algorithm (Click "Simulate Search" to see it in action)</h3>
+            <div id="algorithmSteps"></div>
+            <div class="stats-grid" style="margin-top: 20px;">
+                <div class="stat-card">
+                    <span class="stat-value" id="nodesChecked">0</span>
+                    <span class="stat-label">Nodes Checked</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="nodesPruned">0</span>
+                    <span class="stat-label">Nodes Pruned</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="pointsFound">0</span>
+                    <span class="stat-label">Points Found</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="efficiency">0%</span>
+                    <span class="stat-label">Efficiency</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-section full-width">
+            <h3>📚 How R-Tree Operations Work</h3>
+            
+            <div class="algorithm-step">
+                <strong>1. INSERTION</strong>
+                <p>When inserting a new point:</p>
+                <ol>
+                    <li>Start at root, calculate which child MBR needs <strong>least enlargement</strong> to fit the point</li>
+                    <li>Descend to that child and repeat</li>
+                    <li>Insert at leaf level</li>
+                    <li>If leaf overflows (too many points), <strong>split</strong> into two nodes</li>
+                    <li>Propagate splits up the tree if needed</li>
+                    <li>Update MBRs of all ancestors to encompass new point</li>
+                </ol>
+                <p><code>Time Complexity: O(log n)</code></p>
+            </div>
+
+            <div class="algorithm-step">
+                <strong>2. SEARCH (Range Query)</strong>
+                <p>To find all points within a query rectangle:</p>
+                <ol>
+                    <li>Start at root</li>
+                    <li>For each child MBR:
+                        <ul>
+                            <li>If <strong>overlaps</strong> query rectangle → recursively search that subtree</li>
+                            <li>If <strong>doesn't overlap</strong> → prune entire subtree (huge win!)</li>
+                        </ul>
+                    </li>
+                    <li>At leaf level, check each point for exact match</li>
+                </ol>
+                <p><code>Time Complexity: O(log n + k)</code> where k = results</p>
+            </div>
+
+            <div class="algorithm-step">
+                <strong>3. NEAREST NEIGHBOR</strong>
+                <p>To find closest point to a query point:</p>
+                <ol>
+                    <li>Use priority queue ordered by minimum distance to MBR</li>
+                    <li>Pop closest MBR, expand its children</li>
+                    <li>Keep track of best point found so far</li>
+                    <li>Prune MBRs farther than best point</li>
+                    <li>Continue until queue empty or all remaining MBRs too far</li>
+                </ol>
+                <p><code>Time Complexity: O(log n)</code> on average</p>
+            </div>
+
+            <div class="algorithm-step">
+                <strong>4. DELETION</strong>
+                <p>To remove a point:</p>
+                <ol>
+                    <li>Search for the point (traverse tree)</li>
+                    <li>Remove from leaf node</li>
+                    <li>If node becomes too empty (underflow), <strong>merge</strong> with sibling or redistribute</li>
+                    <li>Update ancestor MBRs (may shrink)</li>
+                </ol>
+                <p><code>Time Complexity: O(log n)</code></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class Point {
+            constructor(x, y, id) {
+                this.x = x;
+                this.y = y;
+                this.id = id;
+            }
+        }
+
+        class MBR {
+            constructor(minX, minY, maxX, maxY) {
+                this.minX = minX;
+                this.minY = minY;
+                this.maxX = maxX;
+                this.maxY = maxY;
+            }
+
+            contains(point) {
+                return point.x >= this.minX && point.x <= this.maxX &&
+                       point.y >= this.minY && point.y <= this.maxY;
+            }
+
+            overlaps(other) {
+                return !(this.maxX < other.minX || this.minX > other.maxX ||
+                        this.maxY < other.minY || this.minY > other.maxY);
+            }
+
+            area() {
+                return (this.maxX - this.minX) * (this.maxY - this.minY);
+            }
+        }
+
+        class RTreeNode {
+            constructor(mbr, children = [], points = [], level = 0) {
+                this.mbr = mbr;
+                this.children = children;
+                this.points = points;
+                this.level = level;
+                this.id = Math.random().toString(36).substr(2, 9);
+            }
+
+            isLeaf() {
+                return this.children.length === 0;
+            }
+        }
+
+        let points = [];
+        let root = null;
+        let searchQuery = null;
+        let searchResults = {
+            checked: [],
+            pruned: [],
+            found: []
+        };
+
+        function generatePoints(count = 50) {
+            points = [];
+            for (let i = 0; i < count; i++) {
+                points.push(new Point(
+                    Math.random() * 550 + 25,
+                    Math.random() * 450 + 25,
+                    i
+                ));
+            }
+        }
+
+        function buildRTree() {
+            if (points.length === 0) return null;
+
+            // Simple R-Tree construction: divide space into quadrants recursively
+            const minX = Math.min(...points.map(p => p.x));
+            const maxX = Math.max(...points.map(p => p.x));
+            const minY = Math.min(...points.map(p => p.y));
+            const maxY = Math.max(...points.map(p => p.y));
+
+            root = new RTreeNode(new MBR(minX, minY, maxX, maxY), [], [], 0);
+
+            // Level 1: Divide into 4 regions
+            const midX = (minX + maxX) / 2;
+            const midY = (minY + maxY) / 2;
+
+            const regions = [
+                {mbr: new MBR(minX, minY, midX, midY), points: []},
+                {mbr: new MBR(midX, minY, maxX, midY), points: []},
+                {mbr: new MBR(minX, midY, midX, maxY), points: []},
+                {mbr: new MBR(midX, midY, maxX, maxY), points: []}
+            ];
+
+            points.forEach(p => {
+                for (let region of regions) {
+                    if (region.mbr.contains(p)) {
+                        region.points.push(p);
+                        break;
+                    }
+                }
+            });
+
+            regions.forEach(region => {
+                if (region.points.length > 0) {
+                    const rMinX = Math.min(...region.points.map(p => p.x));
+                    const rMaxX = Math.max(...region.points.map(p => p.x));
+                    const rMinY = Math.min(...region.points.map(p => p.y));
+                    const rMaxY = Math.max(...region.points.map(p => p.y));
+
+                    const level1Node = new RTreeNode(
+                        new MBR(rMinX, rMinY, rMaxX, rMaxY),
+                        [],
+                        [],
+                        1
+                    );
+
+                    // Level 2: Subdivide each region
+                    if (region.points.length > 4) {
+                        const rMidX = (rMinX + rMaxX) / 2;
+                        const rMidY = (rMinY + rMaxY) / 2;
+
+                        const subRegions = [
+                            {mbr: new MBR(rMinX, rMinY, rMidX, rMidY), points: []},
+                            {mbr: new MBR(rMidX, rMinY, rMaxX, rMidY), points: []},
+                            {mbr: new MBR(rMinX, rMidY, rMidX, rMaxY), points: []},
+                            {mbr: new MBR(rMidX, rMidY, rMaxX, rMaxY), points: []}
+                        ];
+
+                        region.points.forEach(p => {
+                            for (let sub of subRegions) {
+                                if (sub.mbr.contains(p)) {
+                                    sub.points.push(p);
+                                    break;
+                                }
+                            }
+                        });
+
+                        subRegions.forEach(sub => {
+                            if (sub.points.length > 0) {
+                                const sMinX = Math.min(...sub.points.map(p => p.x));
+                                const sMaxX = Math.max(...sub.points.map(p => p.x));
+                                const sMinY = Math.min(...sub.points.map(p => p.y));
+                                const sMaxY = Math.max(...sub.points.map(p => p.y));
+
+                                const level2Node = new RTreeNode(
+                                    new MBR(sMinX, sMinY, sMaxX, sMaxY),
+                                    [],
+                                    sub.points,
+                                    2
+                                );
+                                level1Node.children.push(level2Node);
+                            }
+                        });
+                    } else {
+                        level1Node.points = region.points;
+                    }
+
+                    root.children.push(level1Node);
+                }
+            });
+
+            return root;
+        }
+
+        function drawSpatialView() {
+            const canvas = document.getElementById('spatialCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!root) return;
+
+            // Draw MBRs
+            function drawMBR(mbr, level, isChecked = false, isPruned = false) {
+                const colors = [
+                    {stroke: '#ef4444', fill: 'rgba(239, 68, 68, 0.1)'},
+                    {stroke: '#f59e0b', fill: 'rgba(245, 158, 11, 0.15)'},
+                    {stroke: '#10b981', fill: 'rgba(16, 185, 129, 0.2)'}
+                ];
+
+                const color = colors[level] || colors[2];
+                
+                if (isPruned) {
+                    ctx.strokeStyle = '#94a3b8';
+                    ctx.fillStyle = 'rgba(148, 163, 184, 0.05)';
+                    ctx.setLineDash([5, 5]);
+                } else if (isChecked) {
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+                    ctx.strokeStyle = '#16a34a';
+                    ctx.lineWidth = 3;
+                } else {
+                    ctx.fillStyle = color.fill;
+                    ctx.strokeStyle = color.stroke;
+                    ctx.lineWidth = 2;
+                }
+
+                ctx.fillRect(mbr.minX, mbr.minY, mbr.maxX - mbr.minX, mbr.maxY - mbr.minY);
+                ctx.strokeRect(mbr.minX, mbr.minY, mbr.maxX - mbr.minX, mbr.maxY - mbr.minY);
+                ctx.setLineDash([]);
+            }
+
+            function traverseAndDraw(node) {
+                const isChecked = searchResults.checked.includes(node.id);
+                const isPruned = searchResults.pruned.includes(node.id);
+                
+                drawMBR(node.mbr, node.level, isChecked, isPruned);
+                
+                node.children.forEach(child => traverseAndDraw(child));
+            }
+
+            traverseAndDraw(root);
+
+            // Draw points
+            points.forEach(p => {
+                const isFound = searchResults.found.some(fp => fp.id === p.id);
+                ctx.fillStyle = isFound ? '#22c55e' : '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, isFound ? 5 : 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw search query if exists
+            if (searchQuery) {
+                ctx.strokeStyle = '#8b5cf6';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([10, 5]);
+                ctx.strokeRect(
+                    searchQuery.minX,
+                    searchQuery.minY,
+                    searchQuery.maxX - searchQuery.minX,
+                    searchQuery.maxY - searchQuery.minY
+                );
+                ctx.setLineDash([]);
+            }
+        }
+
+        function displayTreeStructure() {
+            const container = document.getElementById('treeStructure');
+            if (!root) {
+                container.innerHTML = '<div style="color: #94a3b8;">No tree generated yet</div>';
+                return;
+            }
+
+            let html = '';
+            let nodeCount = 0;
+
+            function traverse(node, depth = 0) {
+                nodeCount++;
+                const indent = '  '.repeat(depth);
+                const pointCount = node.isLeaf() ? node.points.length : 0;
+                const childCount = node.children.length;
+                
+                html += `<div class="tree-node tree-level-${node.level}">`;
+                html += `${indent}📦 Node L${node.level} - MBR[${node.mbr.minX.toFixed(0)},${node.mbr.minY.toFixed(0)} → ${node.mbr.maxX.toFixed(0)},${node.mbr.maxY.toFixed(0)}]`;
+                
+                if (pointCount > 0) {
+                    html += ` - ${pointCount} points`;
+                }
+                if (childCount > 0) {
+                    html += ` - ${childCount} children`;
+                }
+                html += '</div>';
+
+                node.children.forEach(child => traverse(child, depth + 1));
+            }
+
+            traverse(root);
+            container.innerHTML = html;
+
+            // Update stats
+            document.getElementById('totalPoints').textContent = points.length;
+            document.getElementById('treeHeight').textContent = getTreeHeight(root);
+            document.getElementById('totalNodes').textContent = nodeCount;
+        }
+
+        function getTreeHeight(node) {
+            if (!node || node.isLeaf()) return 1;
+            return 1 + Math.max(...node.children.map(c => getTreeHeight(c)));
+        }
+
+        function searchRTree(queryMBR) {
+            searchResults = { checked: [], pruned: [], found: [] };
+            const steps = [];
+
+            function search(node, depth = 0) {
+                if (node.mbr.overlaps(queryMBR)) {
+                    searchResults.checked.push(node.id);
+                    steps.push(`<div class="algorithm-step">
+                        ✓ Level ${node.level}: Checking node (overlaps query)
+                    </div>`);
+
+                    if (node.isLeaf()) {
+                        node.points.forEach(p => {
+                            if (queryMBR.contains(p)) {
+                                searchResults.found.push(p);
+                            }
+                        });
+                    } else {
+                        node.children.forEach(child => search(child, depth + 1));
+                    }
+                } else {
+                    searchResults.pruned.push(node.id);
+                    steps.push(`<div class="algorithm-step">
+                        ✗ Level ${node.level}: Pruned (doesn't overlap)
+                    </div>`);
+                }
+            }
+
+            if (root) {
+                search(root);
+            }
+
+            // Update algorithm display
+            document.getElementById('algorithmSteps').innerHTML = steps.join('');
+
+            // Update search stats
+            const totalExamined = searchResults.checked.length + searchResults.found.length;
+            const efficiency = totalExamined > 0 
+                ? ((searchResults.found.length / totalExamined) * 100).toFixed(1)
+                : 0;
+
+            document.getElementById('nodesChecked').textContent = searchResults.checked.length;
+            document.getElementById('nodesPruned').textContent = searchResults.pruned.length;
+            document.getElementById('pointsFound').textContent = searchResults.found.length;
+            document.getElementById('efficiency').textContent = efficiency + '%';
+        }
+
+        function generateTree() {
+            generatePoints(50);
+            buildRTree();
+            searchQuery = null;
+            searchResults = { checked: [], pruned: [], found: [] };
+            drawSpatialView();
+            displayTreeStructure();
+            document.getElementById('algorithmSteps').innerHTML = '<p style="color: #94a3b8;">Click "Simulate Search" to see the algorithm in action</p>';
+        }
+
+        function addPoints() {
+            const newPoints = [];
+            for (let i = 0; i < 20; i++) {
+                newPoints.push(new Point(
+                    Math.random() * 550 + 25,
+                    Math.random() * 450 + 25,
+                    points.length + i
+                ));
+            }
+            points.push(...newPoints);
+            buildRTree();
+            drawSpatialView();
+            displayTreeStructure();
+        }
+
+        function startSearch() {
+            // Random query rectangle
+            const x = Math.random() * 400 + 100;
+            const y = Math.random() * 300 + 100;
+            const width = Math.random() * 100 + 50;
+            const height = Math.random() * 100 + 50;
+
+            searchQuery = new MBR(x, y, x + width, y + height);
+            searchRTree(searchQuery);
+            drawSpatialView();
+        }
+
+        function reset() {
+            generateTree();
+        }
+
+        // Initialize
+        generateTree();
+    </script>
+</body>
+</html>
